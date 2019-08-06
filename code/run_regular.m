@@ -23,7 +23,6 @@ global  sum_c idx_row idx_col idx_val
         win_size = 2*win_radius+1;
         idx_size = win_size^2;idx_size2 = idx_size^2;
        
-        L = spalloc((h+win_size-1)*(w+win_size-1),(h+win_size-1)*(w+win_size-1),idx_size*2*(h+win_size-1)*(w+win_size-1));
         L_size = (h+win_size-1)*(w+win_size-1);
 
         idx_row = zeros(idx_size*h*w,1);
@@ -42,11 +41,16 @@ global  sum_c idx_row idx_col idx_val
         I_padding = zero_padding(I,[win_radius+1,win_radius+1,c],[h+2*win_radius,w+2*win_radius,c]);
 
         I0 = zeros(win_size^2,3,numel(I(:,:,1)));
-        I0(:,1,:) = im2col(I_padding(:,:,1),[win_size,win_size]);I0(:,2,:) = im2col(I_padding(:,:,2),[win_size,win_size]);I0(:,3,:) = im2col(I_padding(:,:,3),[win_size,win_size]);
+        I0(:,1,:) = im2col(I_padding(:,:,1),[win_size,win_size]);
+        I0(:,2,:) = im2col(I_padding(:,:,2),[win_size,win_size]);
+        I0(:,3,:) = im2col(I_padding(:,:,3),[win_size,win_size]);
         I0 = reshape(num2cell(I0,[1,2]),1,h*w);
         [pos_y,pos_x] = meshgrid(1:w,1:h);
+               
         [d_y,d_x] = meshgrid(-win_radius:win_radius,-win_radius:win_radius);
-        win_g = [reshape(d_x,1,numel(d_x));reshape(d_y,1,numel(d_y));ones(1,numel(d_y))];
+        whole_x = d_x(:)'; whole_y = d_y(:)';
+        Gj = [whole_x;whole_y;ones(1,numel(d_y))];
+        
         pos_x_ = num2cell(im2col(pos_x,[1,1]),1);
         pos_y_ = num2cell(im2col(pos_y,[1,1]),1);
         img_idx = reshape(1:(h+win_size-1)*(w+win_size-1),(h+win_size-1),(w+win_size-1));
@@ -58,28 +62,23 @@ global  sum_c idx_row idx_col idx_val
             jj = dMedian0{i};
             x = pos_x_{i};
             y = pos_y_{i};
-            block_kernal_new(ii,jj,x,y,win_size,win_g,img_idx,idx_size,idx_size2,d_x,d_y,win_radius,wMode);
+            block_kernal_new(ii,jj,x,y,win_size,Gj,img_idx,idx_size2,win_radius,wMode);
         end        
         toc
         
         fprintf('generating Laplacian matrix:\n');
         tic
-        n = numel(idx_row);
-        for i = 0:fix(numel(idx_row)/(4*1e8))
-            idx = i*4*1e8+1:min((i+1)*4*1e8,n);
-            x = idx_row(idx);
-            y = idx_col(idx);
-            v = idx_val(idx);
-            L = L+sparse(x,y,v,L_size,L_size);
-        end
+        L = sparse(idx_row,idx_col,idx_val,L_size,L_size);
         toc
         
         tic
         fprintf('solving the linear equation:\n');
-        affirm = imDepth==0;
-        affirm = sparse(1:numel(affirm),1:numel(affirm),reshape(1-affirm,numel(affirm),1));
-        tol = 1e-10;maxit = 5e3;
-        d_interp = cgs(1/lambda_rate*L+affirm,affirm*reshape(imDepth,numel(imDepth),1),tol,maxit);
+
+        imDepthCol = imDepth(:);
+        affirm = imDepthCol==0;
+        affirm = sparse(1:L_size,1:L_size,1-affirm);        
+        tol = 1e-10;maxit = 5e3;        
+        d_interp = cgs(1/lambda_rate*L+affirm, affirm*imDepthCol, tol,maxit);
         d_interp = reshape(d_interp,h+win_size-1,w+win_size-1);
         toc
         
